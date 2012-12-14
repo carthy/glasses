@@ -4,7 +4,7 @@
   (:refer-clojure :exclude [read read-line read-string char])
   (:import (clojure.lang BigInt Numbers PersistentHashMap PersistentHashSet IMeta ISeq
                          RT IReference Symbol IPersistentList Reflector Var Symbol Keyword IObj
-                         PersistentVector IPersistentCollection IRecord Namespace PersistentQueue)
+                         PersistentVector IPersistentCollection IRecord Namespace)
            java.io.InputStream
            (java.util ArrayList regex.Pattern regex.Matcher)
            java.lang.reflect.Constructor))
@@ -542,9 +542,12 @@
   [rdr _]
   (PersistentHashSet/createWithCheck (read-delimited-list \} rdr true)))
 
-(defn read-queue
+;; Marker type
+(deftype Tuple [coll])
+
+(defn read-tuple
   [rdr _]
-  (into PersistentQueue/EMPTY (read-delimited-list \] rdr true)))
+  (Tuple. (read-delimited-list \] rdr true)))
 
 (defn read-regex
   [rdr ch]
@@ -794,7 +797,7 @@
       \( read-fn
       \= read-eval
       \{ read-set
-      \[ read-queue
+      \[ read-tuple
       \< (throwing-reader "Unreadable form")
       \" read-regex
       \! read-comment
