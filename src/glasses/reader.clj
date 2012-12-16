@@ -767,6 +767,23 @@
     (list 'clojure.core/syntax-quote
           (syntax-quote (read rdr true nil true)))))
 
+(defn read-delimited-symbol
+  [rdr ch]
+  (let [sb (StringBuilder.)]
+    (loop [ch (char (read-char rdr))]
+      (if (identical? \| ch)
+        (symbol (str "|" (.toString sb) "|"))
+        (if (nil? ch)
+          (reader-error rdr "EOF while reading delimited symbol")
+          (do (.append sb ch)
+              (if (identical? \\ ch)
+                (let [ch (char (read-char rdr))]
+                  (if (nil? ch)
+                    (reader-error rdr "EOF while reading delimited symbol"))
+                  (.append sb ch)
+                  (recur (char (read-char rdr))))
+                (recur (char (read-char rdr))))))))))
+
 (defn macros [ch]
   (let [c (char ch)]
     (case c
@@ -778,6 +795,7 @@
       \^ read-meta
       \` read-syntax-quote ;;(wrapping-reader 'syntax-quote)
       \~ read-unquote
+      \| read-delimited-symbol
       \( read-list
       \) read-unmatched-delimiter
       \[ read-vector
