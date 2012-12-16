@@ -558,13 +558,12 @@
         (if (nil? ch)
           (reader-error rdr "EOF while reading regex")
           (do (.append sb ch)
-              (if (identical? \\ ch)
+              (when (identical? \\ ch)
                 (let [ch (char (read-char rdr))]
-                  (if (nil? ch)
+                  (when (nil? ch)
                     (reader-error rdr "EOF while reading regex"))
-                  (.append sb ch)
-                  (recur (char (read-char rdr))))
-                (recur (char (read-char rdr))))))))))
+                  (.append sb ch)))
+              (recur (char (read-char rdr)))))))))
 
 (defn read-discard
   [rdr _]
@@ -776,13 +775,12 @@
         (if (nil? ch)
           (reader-error rdr "EOF while reading delimited symbol")
           (do (.append sb ch)
-              (if (identical? \\ ch)
+              (when (identical? \\ ch)
                 (let [ch (char (read-char rdr))]
-                  (if (nil? ch)
+                  (when (nil? ch)
                     (reader-error rdr "EOF while reading delimited symbol"))
-                  (.append sb ch)
-                  (recur (char (read-char rdr))))
-                (recur (char (read-char rdr))))))))))
+                  (.append sb ch)))
+              (recur (char (read-char rdr)))))))))
 
 (defn macros [ch]
   (let [c (char ch)]
