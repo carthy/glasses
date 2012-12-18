@@ -504,7 +504,7 @@
 (defn desugar-meta
   [f]
   (cond
-    (symbol? f) {:tag f}
+    (symbol? f) {:tag (list f)}
     (keyword? f) {f true}
     :else f))
 
@@ -530,9 +530,14 @@
         (let [m (if (and (not (nil? line))
                          (instance? ISeq o))
                   (assoc m :line line
-                         :column column)
-                  m)]
-          (with-meta o (merge (meta o) m)))
+                           :column column)
+                  m)
+              old-meta (meta o)
+              old-tag (:tag old-meta)]
+          (with-meta o (if old-tag
+                         (assoc (merge old-meta (dissoc m :tag))
+                           :tag (into old-tag (:tag m)))
+                         (merge old-meta m))))
         (reader-error rdr "Metadata can only be applied to IMetas")))))
 
 (defn read-set
