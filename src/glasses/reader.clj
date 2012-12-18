@@ -533,9 +533,7 @@
                   (assoc m :line line
                          :column column)
                   m)]
-          (if-not (instance? IReference o)
-            (with-meta o (merge (meta o) m))
-            #_(reset-meta! o m))) ;; I'm not sure whether this is right behaviour
+          (with-meta o (merge (meta o) m)))
         (reader-error rdr "Metadata can only be applied to IMetas")))))
 
 (defn read-set
@@ -609,8 +607,7 @@
       ret
       (let [g (garg n)]
         (set! arg-env (assoc arg-env n g))
-        g))
-    (throw (IllegalStateException. "Arg literal not in #()")))) ;; should never hit this
+        g))))
 
 (declare read-symbol)
 
