@@ -505,7 +505,6 @@
   [f]
   (cond
     (symbol? f) {:tag f}
-    (string? f) {:tag f}
     (keyword? f) {f true}
     :else f))
 
@@ -525,7 +524,7 @@
                         [(get-line-number rdr) (dec (get-column-number rdr))])
         m (desugar-meta (read rdr true nil true))]
     (when-not (map? m)
-      (reader-error rdr "Metadata must be Symbol, Keyword, String or Map"))
+      (reader-error rdr "Metadata must be Symbol, Keyword or Map"))
     (let [o (read rdr true nil true)]
       (if (instance? IMeta o)
         (let [m (if (and (not (nil? line))
