@@ -1,4 +1,4 @@
-(defproject carthy/glasses "0.0.1"
+(defproject carthy/glasses "0.0.2"
   :description "A carthy reader."
   :url "https://github.com/carthy/glasses"
   :license {:name "LGPL"
