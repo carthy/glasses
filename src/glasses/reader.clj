@@ -788,7 +788,6 @@
 (defn dispatch-macros [ch]
   (let [c (char ch)]
     (case c
-      \^ read-meta                ;deprecated
       \' read-var
       \( read-fn
       \= read-eval
