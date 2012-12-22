@@ -1,7 +1,8 @@
 (set! *warn-on-reflection* true)
 
 (ns glasses.reader
-  (:refer-clojure :exclude [read read-line read-string char])
+  (:refer-clojure :exclude [read read-line read-string char default-data-readers])
+  (:require [clojure.core :as c.c])
   (:import (clojure.lang BigInt Numbers PersistentHashMap PersistentHashSet IMeta ISeq
                          RT IReference Symbol IPersistentList Reflector Var Symbol Keyword IObj
                          PersistentVector IPersistentCollection IRecord Namespace)
@@ -837,6 +838,8 @@
             (Reflector/invokeStaticMethod class "create" (object-array [vals])))))
       (reader-error rdr "Invalid reader constructor form"))))
 
+(declare default-data-readers)
+
 (defn read-tagged [rdr initch]
   (let [tag (read rdr true nil false)]
     (if-not (instance? Symbol tag)
@@ -847,6 +850,22 @@
       (if (.contains (name tag) ".")
         (read-ctor rdr tag)
         (reader-error rdr "No reader function for tag " (name tag))))))
+
+;; marker type
+(deftype complex [real imaginary])
+
+(defn complex-reader [form]
+  {:pre [(vector? form)
+         (= 2 (count form))
+         (every? #(or (number? %)
+                      (instance? complex %)) form)]}
+  (->complex (first form) (second form)))
+
+(defmethod print-method complex [^complex c ^java.io.Writer w]
+  (.write w (str "#c [" (.real c) " " (.imaginary c) "]")))
+
+(def default-data-readers
+  (assoc c.c/default-data-readers 'c #'complex-reader))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public API
