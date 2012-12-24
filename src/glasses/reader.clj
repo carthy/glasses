@@ -6,7 +6,6 @@
   (:import (clojure.lang BigInt Numbers PersistentHashMap PersistentHashSet IMeta ISeq
                          RT IReference Symbol IPersistentList Reflector Var Symbol Keyword IObj
                          PersistentVector IPersistentCollection IRecord Namespace)
-           java.io.InputStream
            (java.util ArrayList regex.Pattern regex.Matcher)
            java.lang.reflect.Constructor))
 
@@ -52,23 +51,6 @@
     (when (> s-len s-pos)
       (.charAt s s-pos))))
 
-(deftype InputStreamReader [^InputStream is ^:unsynchronized-mutable ^bytes buf]
-  Reader
-  (read-char [reader]
-    (if buf
-      (let [c (aget buf 0)]
-        (set! buf nil)
-        (char c))
-      (let [c (.read is)]
-        (when-not (== c -1)
-          (char c)))))
-  (peek-char [reader]
-    (when-not buf
-      (set! buf (byte-array 1))
-      (when (== -1 (.read is buf))
-        (set! buf nil)))
-    (when buf
-      (char (aget buf 0)))))
 
 (deftype PushbackReader
     [rdr ^objects buf buf-len ^:unsynchronized-mutable buf-pos]
@@ -883,28 +865,14 @@
   ([^String s buf-len]
      (PushbackReader. (string-reader s) (object-array buf-len) buf-len buf-len)))
 
-(defn input-stream-reader
-  "Creates an InputStreamReader from an InputString"
-  [is]
-  (InputStreamReader. is nil))
-
-(defn input-stream-push-back-reader
-  "Creates a PushbackReader from a given InputString"
-  ([is]
-     (input-stream-push-back-reader is 1))
-  ([^InputStream is buf-len]
-     (PushbackReader. (input-stream-reader is) (object-array buf-len) buf-len buf-len)))
-
 (defn indexing-push-back-reader
   "Creates an IndexingPushbackReader from a given string or Reader"
   ([s-or-rdr]
      (IndexingPushbackReader.
-      ((if (string? s-or-rdr) string-push-back-reader input-stream-push-back-reader)
-       s-or-rdr) 0 1 true nil))
+      (string-push-back-reader s-or-rdr) 0 1 true nil))
   ([s-or-rdr buf-len]
      (IndexingPushbackReader.
-      ((if (string? s-or-rdr) string-push-back-reader input-stream-push-back-reader)
-       s-or-rdr buf-len) 0 1 true nil)))
+      (string-push-back-reader s-or-rdr buf-len) 0 1 true nil)))
 
 (defn read
   "Reads the first object from an IPushbackReader or a java.io.PushbackReader.
