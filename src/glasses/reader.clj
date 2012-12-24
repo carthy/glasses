@@ -2,7 +2,8 @@
 
 (ns glasses.reader
   (:refer-clojure :exclude [read read-line read-string char default-data-readers])
-  (:require [clojure.core :as c.c])
+  (:require [clojure.core :as c.c]
+            [clojure.string :as s])
   (:import (clojure.lang BigInt Numbers PersistentHashMap PersistentHashSet IMeta ISeq
                          RT IReference Symbol IPersistentList Reflector Var Symbol Keyword IObj
                          PersistentVector IPersistentCollection IRecord Namespace)
@@ -44,13 +45,12 @@
   Reader
   (read-char [reader]
     (when (> s-len s-pos)
-      (let [r (.charAt s s-pos)]
+      (let [r (nth s s-pos)]
         (update! s-pos inc)
         r)))
   (peek-char [reader]
     (when (> s-len s-pos)
-      (.charAt s s-pos))))
-
+      (nth s s-pos))))
 
 (deftype PushbackReader
     [rdr ^objects buf buf-len ^:unsynchronized-mutable buf-pos]
@@ -174,13 +174,13 @@
   [rdr initch]
   (if-not initch
     (reader-error rdr "EOF while reading")
-    (loop [sb (doto (StringBuilder.) (.append initch))
+    (loop [sb (str initch)
            ch (peek-char rdr)]
       (if (or (nil? ch)
               (whitespace? ch)
               (macro-terminating? ch))
-        (.toString sb)
-        (recur (doto sb (.append (read-char rdr))) (peek-char rdr))))))
+        sb
+        (recur (str sb (read-char rdr)) (peek-char rdr))))))
 
 (defn read-past
   "Read until first character that doesn't match pred, returning
@@ -239,7 +239,7 @@
     (Double/parseDouble s)))
 
 (defn match-number [^String s]
-  (let [s (.replaceAll s "_" "")]
+  (let [s (s/replace s "_" "")]
     (cond
       (.contains s "/") (match-ratio s (doto (.matcher ratio-pattern s) .matches))
       (.contains s ".") (match-float s (doto (.matcher float-pattern s) .matches))
@@ -248,12 +248,12 @@
 (defn- parse-symbol [^String token]
   (when-not (= "" token)
     (let [ns-idx (.indexOf token "/")
-          ns (if-not (== -1 ns-idx) (.substring token 0 ns-idx))]
+          ns (if-not (== -1 ns-idx) (subs token 0 ns-idx))]
       (if (nil? ns)
         [nil token]
         (when-not (== (inc ns-idx) (count token))
-          (let [sym (.substring token (inc ns-idx))]
-            (when (and (not (numeric? (.charAt sym 0)))
+          (let [sym (subs token (inc ns-idx))]
+            (when (and (not (numeric? (nth sym 0)))
                        (not (= "" sym))
                        (or (= sym "/")
                            (== -1 (.indexOf sym "/"))))
@@ -284,14 +284,14 @@
 (defn read-unicode-char
   ([^String token offset length base]
      (let [l (+ offset length)]
-       (when-not (== (.length token) l)
+       (when-not (== (count token) l)
          (throw (IllegalArgumentException. (str "Invalid unicode character: \\" token))))
        (loop [uc 0 i offset]
          (if (== i l)
            (char uc)
-           (let [d (Character/digit (.charAt token i) ^int base)]
+           (let [d (Character/digit ^char (nth token i) ^int base)]
              (if (== d -1)
-               (throw (IllegalArgumentException. (str "Invalid digit: " (.charAt token i))))
+               (throw (IllegalArgumentException. (str "Invalid digit: " (nth token i))))
                (recur (long (* uc (+ base d))) (inc i))))))))
 
   ([rdr initch base length exact?]
@@ -322,7 +322,7 @@
       (let [token (read-token rdr ch)]
         (cond
 
-          (== 1 (.length token))  (Character/valueOf (.charAt token 0))
+          (== 1 (count token))  (Character/valueOf (nth token 0))
 
           (= token "newline") \newline
           (= token "space") \space
@@ -343,7 +343,7 @@
           (read-unicode-char token 1 2 16)
 
           (.startsWith token "o")
-          (let [len (dec (.length token))]
+          (let [len (dec (count token))]
             (if (> len 3)
               (reader-error rdr "Invalid octal escape sequence length: " len)
               (let [uc (read-unicode-char token 1 len 8)]
@@ -399,13 +399,12 @@
 
 (defn read-number
   [reader initch]
-  (loop [sb (doto (StringBuilder.) (.append initch))
+  (loop [sb (str initch)
          ch (peek-char reader)]
     (if (or (nil? ch) (whitespace? ch) (macros ch))
-      (let [s (.toString sb)]
-        (or (match-number s)
-            (reader-error reader "Invalid number format [" s "]")))
-      (recur (doto sb (.append (read-char reader))) (peek-char reader)))))
+      (or (match-number sb)
+          (reader-error reader "Invalid number format [" sb "]"))
+      (recur (str sb (read-char reader)) (peek-char reader)))))
 
 (defn escape-char [sb rdr]
   (let [ch (read-char rdr)]
@@ -434,13 +433,13 @@
 
 (defn read-string*
   [reader _]
-  (loop [sb (StringBuilder.)
+  (loop [sb ""
          ch (char (read-char reader))]
     (case ch
       nil (reader-error reader "EOF while reading string")
-      \\ (recur (doto sb (.append (escape-char sb reader))) (char (read-char reader)))
-      \" (.toString sb)
-      (recur (doto sb (.append ch)) (char (read-char reader))))))
+      \\ (recur (str sb (escape-char sb reader)) (char (read-char reader)))
+      \" sb
+      (recur (str sb ch) (char (read-char reader))))))
 
 (defn read-symbol
   [rdr initch]
@@ -473,13 +472,13 @@
         (if (and s (== -1 (.indexOf token "::")))
           (let [^String ns (s 0)
                 ^String name (s 1)]
-            (if (identical? \: (.charAt token 0))
+            (if (identical? \: (nth token 0))
               (if ns
-                (let [ns (resolve-ns (symbol (.substring ns 1)))]
+                (let [ns (resolve-ns (symbol (subs ns 1)))]
                   (if ns
                     (keyword (str ns) name)
                     (reader-error reader "Invalid token: :" token)))
-                (keyword (str *ns*) (.substring name 1)))
+                (keyword (str *ns*) (subs name 1)))
               (keyword ns name)))
           (reader-error reader "Invalid token: :" token)))
       (reader-error reader "Invalid token: :"))))
@@ -536,19 +535,17 @@
 
 (defn read-regex
   [rdr ch]
-  (let [sb (StringBuilder.)]
-    (loop [ch (char (read-char rdr))]
-      (if (identical? \" ch)
-        (Pattern/compile (.toString sb))
-        (if (nil? ch)
-          (reader-error rdr "EOF while reading regex")
-          (do (.append sb ch)
-              (when (identical? \\ ch)
-                (let [ch (char (read-char rdr))]
-                  (when (nil? ch)
-                    (reader-error rdr "EOF while reading regex"))
-                  (.append sb ch)))
-              (recur (char (read-char rdr)))))))))
+  (loop [ch (char (read-char rdr)) sb ""]
+    (if (identical? \" ch)
+      (Pattern/compile sb)
+      (if (nil? ch)
+        (reader-error rdr "EOF while reading regex")
+        (let [ch? (when (identical? \\ ch)
+                    (let [ch (char (read-char rdr))]
+                      (when (nil? ch)
+                        (reader-error rdr "EOF while reading regex"))
+                      ch))]
+          (recur (char (read-char rdr)) (str sb (str ch ch?))))))))
 
 (defn read-discard
   [rdr _]
@@ -620,7 +617,7 @@
     (reader-error rdr "#= not allowed when *read-eval* is false"))
   (let [o (read rdr true nil true)]
     (if (instance? Symbol o)
-      (RT/classForName (.toString ^Symbol o))
+      (RT/classForName (str o))
       (if (instance? IPersistentList o)
         (let [fs (first o)
               o (rest o)
@@ -630,7 +627,7 @@
                           (RT/var (namespace vs) (name vs)))
             (.endsWith fs-name ".")
             (let [args (to-array o)]
-              (-> fs-name (subs 0 (dec (.length fs-name)))
+              (-> fs-name (subs 0 (dec (count fs-name)))
                   RT/classForName (Reflector/invokeConstructor args)))
 
             (Compiler/namesStaticMember fs)
@@ -722,7 +719,7 @@
 
            (.endsWith sym ".")
            (let [csym (symbol (subs sym 0 (dec (count sym))))]
-             (symbol (.concat (name (resolve-symbol csym)) ".")))
+             (symbol (str (name (resolve-symbol csym)) ".")))
            :else (resolve-symbol form))))
 
      (or (keyword? form)
@@ -804,7 +801,7 @@
           :short
           (loop [i 0]
             (if (> i ctors-num)
-              (reader-error rdr "Unexpected number of constructor arguments to " (.toString class)
+              (reader-error rdr "Unexpected number of constructor arguments to " (str class)
                             ": got" (count entries))
               (if (== (count (.getParameterTypes ^Constructor (aget all-ctors i)))
                       ctors-num)
@@ -856,7 +853,7 @@
 (defn string-reader
   "Creates a StringReader from a given string"
   ([^String s]
-     (StringReader. s (.length s) 0)))
+     (StringReader. s (count s) 0)))
 
 (defn string-push-back-reader
   "Creates a PushbackReader from a given string"
@@ -914,7 +911,7 @@ Returns the object read. If EOF, throws if eof-error? is true. Otherwise returns
   "Reads a line from the reader or from *in* if no reader is specified"
   ([] (read-line *in*))
   ([rdr]
-     (loop [c (char (read-char rdr)) s (StringBuilder.)]
+     (loop [c (char (read-char rdr)) s ""]
        (if (newline? c)
-         (.toString s)
-         (recur (char (read-char rdr)) (.append s c))))))
+         s
+         (recur (char (read-char rdr)) (str s c))))))
