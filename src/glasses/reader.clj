@@ -617,36 +617,6 @@
               (throw (IllegalStateException. "Arg literal must be %, %& or %integer"))
               (register-arg n))))))))
 
-(defn read-eval
-  [rdr _]
-  (when-not *read-eval*
-    (reader-error rdr "#= not allowed when *read-eval* is false"))
-  (let [o (read rdr true nil true)]
-    (if (instance? Symbol o)
-      (RT/classForName (str o))
-      (if (instance? IPersistentList o)
-        (let [fs (first o)
-              o (rest o)
-              fs-name (name fs)]
-          (cond
-            (= fs 'var) (let [vs (first o)]
-                          (RT/var (namespace vs) (name vs)))
-            (.endsWith fs-name ".")
-            (let [args (to-array o)]
-              (-> fs-name (subs 0 (dec (count fs-name)))
-                  RT/classForName (Reflector/invokeConstructor args)))
-
-            (Compiler/namesStaticMember fs)
-            (let [args (to-array o)]
-              (Reflector/invokeStaticMethod (namespace fs) fs-name args))
-
-            :else
-            (let [v (Compiler/maybeResolveIn *ns* fs)]
-              (if (instance? Var v)
-                (apply v o)
-                (reader-error rdr "Can't resolve " fs)))))
-        (throw (IllegalArgumentException. "Unsupported #= form"))))))
-
 (def ^:private ^:dynamic gensym-env nil)
 
 (defn read-unquote
@@ -780,7 +750,6 @@
     (case c
       \' read-var
       \( read-fn
-      \= read-eval
       \{ read-set
       \[ read-tuple
       \< (throwing-reader "Unreadable form")
