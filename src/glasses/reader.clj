@@ -242,7 +242,13 @@
   (let [s (s/replace s "_" "")]
     (cond
       (.contains s "/") (match-ratio s (doto (.matcher ratio-pattern s) .matches))
-      (.contains s ".") (match-float s (doto (.matcher float-pattern s) .matches))
+
+      (or (.contains s ".")
+          (.contains s "M")
+          (.contains s "E")
+          (.contains s "e"))
+      (match-float s (doto (.matcher float-pattern s) .matches))
+
       :else (match-int s (doto (.matcher int-pattern s) .matches)))))
 
 (defn- parse-symbol [^String token]
