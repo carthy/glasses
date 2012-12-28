@@ -558,10 +558,6 @@
   (read rdr true nil true)
   rdr)
 
-(defn read-var
-  [rdr _]
-  (cons 'var (cons (read rdr true nil true) nil)))
-
 (def ^:private ^:dynamic arg-env nil)
 
 (defn- garg [n]
@@ -748,7 +744,7 @@
 (defn dispatch-macros [ch]
   (let [c (char ch)]
     (case c
-      \' read-var
+      \' (wrapping-reader 'var)
       \( read-fn
       \{ read-set
       \[ read-tuple
