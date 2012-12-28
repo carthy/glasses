@@ -4,9 +4,9 @@
   (:refer-clojure :exclude [read read-line read-string char default-data-readers])
   (:require [clojure.core :as c.c]
             [clojure.string :as s])
-  (:import (clojure.lang BigInt Numbers PersistentHashMap PersistentHashSet IMeta ISeq
-                         RT IReference Symbol IPersistentList Reflector Var Symbol Keyword IObj
-                         PersistentVector IPersistentCollection IRecord Namespace)
+  (:import (clojure.lang BigInt Numbers PersistentHashMap PersistentHashSet
+                         IMeta  RT Symbol Reflector Var Symbol IObj
+                         PersistentVector IRecord Namespace)
            (java.util ArrayList regex.Pattern regex.Matcher)
            java.lang.reflect.Constructor))
 
@@ -516,7 +516,7 @@
     (let [o (read rdr true nil true)]
       (if (instance? IMeta o)
         (let [m (if (and (not (nil? line))
-                         (instance? ISeq o))
+                         (seq? o))
                   (assoc m :line line
                            :column column)
                   m)
@@ -609,7 +609,7 @@
         (let [n (read rdr true nil true)]
           (if (= n '&)
             (register-arg -1)
-            (if-not (instance? Number n)
+            (if-not (number? n)
               (throw (IllegalStateException. "Arg literal must be %, %& or %integer"))
               (register-arg n))))))))
 
@@ -624,11 +624,11 @@
 
 (declare syntax-quote)
 (defn unquote-splicing? [form]
-  (and (instance? ISeq form)
+  (and (seq? form)
        (= (first form) 'clojure.core/unquote-splicing)))
 
 (defn unquote? [form]
-  (and (instance? ISeq form)
+  (and (seq? form)
        (= (first form) 'clojure.core/unquote)))
 
 (defn- register-gensym [sym]
@@ -651,9 +651,9 @@
           s
           (symbol (name (.name ns)) (name s))))
       (if-let [o ((ns-map *ns*) s)]
-        (if (instance? Class o)
+        (if (class? o)
           (symbol (.getName ^Class o))
-          (if (instance? Var o)
+          (if (var? o)
             (symbol (-> ^Var o .ns .name name) (-> ^Var o .sym name))))
         (symbol (name (.name *ns*)) (name s))))))
 
@@ -671,12 +671,12 @@
      (.containsKey Compiler/specials form)
      form
 
-     (instance? Symbol form)
+     (symbol? form)
      (if (namespace form)
-       (let [class? ((ns-map *ns*)
-                     (symbol (namespace form)))]
-         (if (instance? Class class)
-           (symbol (.getName ^Class class?) (name form))
+       (let [maybe-class ((ns-map *ns*)
+                          (symbol (namespace form)))]
+         (if (class? maybe-class)
+           (symbol (.getName ^Class maybe-class) (name form))
            (resolve-symbol form)))
        (let [sym (name form)]
          (cond
@@ -703,7 +703,7 @@
      (unquote? form) form
      (unquote-splicing? form) form
 
-     (instance? IPersistentCollection form)
+     (coll? form)
      (loop [s form r (transient [])]
        (if s
          (recur (next s) (conj! r (syntax-quote (first s))))
@@ -782,7 +782,7 @@
           (let [vals (RT/map entries)]
             (loop [s (keys vals)]
               (if s
-                (if-not (instance? Keyword (first s))
+                (if-not (keyword? (first s))
                   (reader-error rdr "Unreadable ctor form: key must be of type clojure.lang.Keyword")
                   (recur (next s)))))
             (Reflector/invokeStaticMethod class "create" (object-array [vals])))))
@@ -792,7 +792,7 @@
 
 (defn read-tagged [rdr initch]
   (let [tag (read rdr true nil false)]
-    (if-not (instance? Symbol tag)
+    (if-not (symbol? tag)
       (reader-error rdr "Reader tag must be a symbol"))
     (if-let [f (or (*data-readers* tag)
                    (default-data-readers tag))]
