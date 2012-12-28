@@ -56,15 +56,17 @@
     [rdr ^objects buf buf-len ^:unsynchronized-mutable buf-pos]
   Reader
   (read-char [reader]
-    (if (< buf-pos buf-len)
-      (let [r (aget buf buf-pos)]
-        (update! buf-pos inc)
-        r)
-      (read-char rdr)))
+    (char
+     (if (< buf-pos buf-len)
+       (let [r (aget buf buf-pos)]
+         (update! buf-pos inc)
+         r)
+       (read-char rdr))))
   (peek-char [reader]
-    (if (< buf-pos buf-len)
-      (aget buf buf-pos)
-      (peek-char rdr)))
+    (char
+     (if (< buf-pos buf-len)
+       (aget buf buf-pos)
+       (peek-char rdr))))
   IPushbackReader
   (unread [reader ch]
     (when ch
@@ -75,20 +77,19 @@
 (declare newline?)
 
 (defn- normalize-newline [rdr ch]
-  (let [ch (char ch)]
-    (if (identical? \return ch)
-      (let [c (char (peek-char rdr))]
-        (when (identical? \formfeed c)
-          (read-char rdr))
-        \newline)
-      ch)))
+  (if (identical? \return ch)
+    (let [c (peek-char rdr)]
+      (when (identical? \formfeed c)
+        (read-char rdr))
+      \newline)
+    ch))
 
 (deftype IndexingPushbackReader
     [rdr ^:unsynchronized-mutable line ^:unsynchronized-mutable column
      ^:unsynchronized-mutable line-start? ^:unsynchronized-mutable prev]
   Reader
   (read-char [reader]
-    (when-let [ch (char (read-char rdr))]
+    (when-let [ch (read-char rdr)]
       (let [ch (normalize-newline rdr ch)]
         (set! prev line-start?)
         (set! line-start? (newline? ch))
@@ -121,7 +122,7 @@
   [ch]
   (when ch
     (or (Character/isWhitespace ^Character ch)
-        (identical? \, (char ch)))))
+        (identical? \, ch))))
 
 (defn- numeric?
   "Checks whether a given character is numeric"
@@ -132,21 +133,19 @@
 (defn- comment-prefix?
   "Checks whether the character begins a comment."
   [ch]
-  (identical? \; (char ch)))
+  (identical? \; ch))
 
 (defn- number-literal?
   "Checks whether the reader is at the start of a number literal"
   [reader initch]
-  (let [c (char initch)]
-    (or (numeric? initch)
-        (and (or (identical? \+ c) (identical?  \- c))
-             (numeric? (peek-char reader))))))
+  (or (numeric? initch)
+      (and (or (identical? \+ initch) (identical?  \- initch))
+           (numeric? (peek-char reader)))))
 
 (defn newline? [c]
   "Checks whether the character is a newline"
-  (let [c (char c)]
-    (or (identical? \newline c)
-        (nil? c))))
+  (or (identical? \newline c)
+      (nil? c)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; read helpers
@@ -164,11 +163,10 @@
                             :column (get-column-number rdr)})))))
 
 (defn macro-terminating? [ch]
-  (let [c (char ch)]
-    (and (not (identical? \# c))
-         (not (identical? \' c))
-         (not (identical? \: c))
-         (macros ch))))
+  (and (not (identical? \# ch))
+       (not (identical? \' ch))
+       (not (identical? \: ch))
+       (macros ch)))
 
 (defn ^String read-token
   [rdr initch]
@@ -440,12 +438,12 @@
 (defn read-string*
   [reader _]
   (loop [sb ""
-         ch (char (read-char reader))]
+         ch (read-char reader)]
     (case ch
       nil (reader-error reader "EOF while reading string")
-      \\ (recur (str sb (escape-char sb reader)) (char (read-char reader)))
+      \\ (recur (str sb (escape-char sb reader)) (read-char reader))
       \" sb
-      (recur (str sb ch) (char (read-char reader))))))
+      (recur (str sb ch) (read-char reader)))))
 
 (defn read-symbol
   [rdr initch]
@@ -541,17 +539,17 @@
 
 (defn read-regex
   [rdr ch]
-  (loop [ch (char (read-char rdr)) sb ""]
+  (loop [ch (read-char rdr) sb ""]
     (if (identical? \" ch)
       (Pattern/compile sb)
       (if (nil? ch)
         (reader-error rdr "EOF while reading regex")
         (let [ch? (when (identical? \\ ch)
-                    (let [ch (char (read-char rdr))]
+                    (let [ch (read-char rdr)]
                       (when (nil? ch)
                         (reader-error rdr "EOF while reading regex"))
                       ch))]
-          (recur (char (read-char rdr)) (str sb (str ch ch?))))))))
+          (recur (read-char rdr) (str sb (str ch ch?))))))))
 
 (defn read-discard
   [rdr _]
@@ -617,7 +615,7 @@
 
 (defn read-unquote
   [rdr comma]
-  (if-let [ch (char (peek-char rdr))]
+  (if-let [ch (peek-char rdr)]
     (if (identical? \@ ch)
       ((wrapping-reader 'clojure.core/unquote-splicing) (doto rdr read-char) \@)
       ((wrapping-reader 'clojure.core/unquote) rdr \~))))
@@ -720,39 +718,37 @@
           (syntax-quote (read rdr true nil true)))))
 
 (defn macros [ch]
-  (let [c (char ch)]
-    (case c
-      \" read-string*
-      \: read-keyword
-      \; read-comment
-      \' (wrapping-reader 'quote)
-      \@ (wrapping-reader 'clojure.core/deref)
-      \^ read-meta
-      \` read-syntax-quote ;;(wrapping-reader 'syntax-quote)
-      \~ read-unquote
-      \( read-list
-      \) read-unmatched-delimiter
-      \[ read-vector
-      \] read-unmatched-delimiter
-      \{ read-map
-      \} read-unmatched-delimiter
-      \\ read-char*
-      \% read-arg
-      \# read-dispatch
-      nil)))
+  (case ch
+    \" read-string*
+    \: read-keyword
+    \; read-comment
+    \' (wrapping-reader 'quote)
+    \@ (wrapping-reader 'clojure.core/deref)
+    \^ read-meta
+    \` read-syntax-quote ;;(wrapping-reader 'syntax-quote)
+    \~ read-unquote
+    \( read-list
+    \) read-unmatched-delimiter
+    \[ read-vector
+    \] read-unmatched-delimiter
+    \{ read-map
+    \} read-unmatched-delimiter
+    \\ read-char*
+    \% read-arg
+    \# read-dispatch
+    nil))
 
 (defn dispatch-macros [ch]
-  (let [c (char ch)]
-    (case c
-      \' (wrapping-reader 'var)
-      \( read-fn
-      \{ read-set
-      \[ read-tuple
-      \< (throwing-reader "Unreadable form")
-      \" read-regex
-      \! read-comment
-      \_ read-discard
-      nil)))
+  (case ch
+    \' (wrapping-reader 'var)
+    \( read-fn
+    \{ read-set
+    \[ read-tuple
+    \< (throwing-reader "Unreadable form")
+    \" read-regex
+    \! read-comment
+    \_ read-discard
+    nil))
 
 (defn read-tagged* [rdr tag f]
   (let [o (read rdr true nil true)]
@@ -760,7 +756,7 @@
 
 (defn read-ctor [rdr class-name]
   (let [class (RT/classForName (name class-name))
-        ch (char (read-past whitespace? rdr))] ;; differs from clojure
+        ch (read-past whitespace? rdr)] ;; differs from clojure
     (if-let [[end-ch form] (case ch
                              \[ [\] :short]
                              \{ [\} :extended]
@@ -850,7 +846,7 @@ Returns the object read. If EOF, throws if eof-error? is true. Otherwise returns
   ([reader eof-error? sentinel] (read reader eof-error? sentinel false))
   ([^glasses.reader.IPushbackReader reader eof-error? sentinel recursive?]
      (try
-       (let [ch (char (read-char reader))]
+       (let [ch (read-char reader)]
          (cond
            (whitespace? ch) (read reader eof-error? sentinel recursive?)
            (nil? ch) (if eof-error? (reader-error reader "EOF") sentinel)
@@ -882,7 +878,7 @@ Returns the object read. If EOF, throws if eof-error? is true. Otherwise returns
   "Reads a line from the reader or from *in* if no reader is specified"
   ([] (read-line *in*))
   ([rdr]
-     (loop [c (char (read-char rdr)) s ""]
+     (loop [c (read-char rdr) s ""]
        (if (newline? c)
          s
-         (recur (char (read-char rdr)) (str s c))))))
+         (recur (read-char rdr) (str s c))))))
