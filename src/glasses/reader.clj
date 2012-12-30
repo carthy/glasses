@@ -537,6 +537,9 @@
   [rdr _]
   (Tuple. (read-delimited-list \] rdr true)))
 
+(defmethod print-method Tuple [^Tuple t ^java.io.Writer w]
+  (.write w (str "#" (.coll t))))
+
 (defn read-regex
   [rdr ch]
   (loop [ch (read-char rdr) sb ""]
