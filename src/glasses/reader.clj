@@ -5,7 +5,7 @@
   (:require [clojure.core :as c.c]
             [clojure.string :as s])
   (:import (clojure.lang BigInt Numbers PersistentHashMap PersistentHashSet
-                         IMeta  RT Symbol Reflector Var Symbol IObj
+                         IMeta  RT Symbol Reflector Var Symbol IObj PersistentQueue
                          PersistentVector IRecord Namespace)
            (java.util ArrayList regex.Pattern regex.Matcher)
            java.lang.reflect.Constructor))
@@ -821,10 +821,18 @@
 (defmethod print-method bitmap [^bitmap b ^java.io.Writer w]
   (.write w (str "#bitmap " (.elements b))))
 
+(defn queue-reader [form]
+  {:pre [(vector? form)]}
+  (into PersistentQueue/EMPTY form))
+
+(defmethod print-method PersistentQueue [^PersistentQueue q ^java.io.Writer w]
+  (.write w (str "#queue " (vec q))))
+
 (def default-data-readers
   (assoc c.c/default-data-readers
     'c #'complex-reader
-    'bitmap #'bitmap-reader))
+    'bitmap #'bitmap-reader
+    'queue #'queue-reader))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public API
