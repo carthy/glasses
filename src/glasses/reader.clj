@@ -810,8 +810,21 @@
 (defmethod print-method complex [^complex c ^java.io.Writer w]
   (.write w (str "#c [" (.real c) " " (.imaginary c) "]")))
 
+;; marker type
+(deftype bitmap [elements])
+
+(defn bitmap-reader [form]
+  {:pre [(vector? form)
+         (every? #{0 1} form)]}
+  (->bitmap form))
+
+(defmethod print-method bitmap [^bitmap b ^java.io.Writer w]
+  (.write w (str "#bitmap " (.elements b))))
+
 (def default-data-readers
-  (assoc c.c/default-data-readers 'c #'complex-reader))
+  (assoc c.c/default-data-readers
+    'c #'complex-reader
+    'bitmap #'bitmap-reader))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public API
