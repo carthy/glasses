@@ -197,14 +197,14 @@
       (recur)))
   reader)
 
-(def ^Pattern int-pattern #"([-+]?)(?:(0)|([1-9][0-9]*)|0[xX]([0-9A-Fa-f]+)|0([0-7]+)|([1-9][0-9]?)[rR]([0-9A-Za-z]+)|0[0-9]+)(N)?")
+(def ^Pattern int-pattern #"([-+]?)(?:(0)|([1-9][0-9]*)|0[xX]([0-9A-Fa-f]+)|0([0-7]+)|([1-9][0-9]?)[rR]([0-9A-Za-z]+)|0[0-9]+)")
 (def ^Pattern ratio-pattern #"([-+]?[0-9]+)/([0-9]+)")
-(def ^Pattern float-pattern #"([-+]?[0-9]+(\.[0-9]*)?([eE][-+]?[0-9]+)?)(M)?")
+(def ^Pattern float-pattern #"([-+]?[0-9]+(\.[0-9]*)?([eE][-+]?[0-9]+)?)((?:p)([0-9]+))?")
 
 (defn- match-int
   [s ^Matcher m]
   (if (.group m 2)
-    (if (.group m 8) 0N 0)
+    0
     (let [negate? (= "-" (.group m 1))
           a (cond
               (.group m 3) [(.group m 3) 10]
@@ -217,11 +217,9 @@
       (when n
         (let [bn (BigInteger. n radix)
               bn (if negate? (.negate bn) bn)]
-          (if (.group m 8)
-            (BigInt/fromBigInteger bn)
-            (if (< (.bitLength bn) 64)
-              (.longValue bn)
-              (BigInt/fromBigInteger bn))))))))
+          (if (< (.bitLength bn) 64)
+            (.longValue bn)
+            (BigInt/fromBigInteger bn)))))))
 
 (defn- match-ratio
   [s ^Matcher m]
@@ -230,11 +228,13 @@
     (/ (-> numerator   BigInteger. BigInt/fromBigInteger Numbers/reduceBigInt)
        (-> denominator BigInteger. BigInt/fromBigInteger Numbers/reduceBigInt))))
 
+(deftype DoubleWithPrecision [double precision])
 (defn- match-float
   [^String s ^Matcher m]
-  (if (.group m 4)
-    (BigDecimal. ^String (.group m 1))
-    (Double/parseDouble s)))
+  (let [d (Double/parseDouble (.group m 1))]
+    (if-let [precision (.group m 5)]
+      (DoubleWithPrecision. d (Integer/parseInt precision))
+      d)))
 
 (defn match-number [^String s]
   (let [s (s/replace s "_" "")]
@@ -242,7 +242,7 @@
       (.contains s "/") (match-ratio s (doto (.matcher ratio-pattern s) .matches))
 
       (or (.contains s ".")
-          (.contains s "M")
+          (.contains s "p")
           (.contains s "E")
           (.contains s "e"))
       (match-float s (doto (.matcher float-pattern s) .matches))
