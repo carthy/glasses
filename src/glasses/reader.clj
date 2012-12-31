@@ -476,13 +476,9 @@
         (if (and s (== -1 (.indexOf token "::")))
           (let [^String ns (s 0)
                 ^String name (s 1)]
-            (if (identical? \: (nth token 0))
-              (if ns
-                (let [ns (resolve-ns (symbol (subs ns 1)))]
-                  (if ns
-                    (keyword (str ns) name)
-                    (reader-error reader "Invalid token: :" token)))
-                (keyword (str *ns*) (subs name 1)))
+            (if (or (identical? \: (nth ns 0))
+                    (identical? \: (nth name 0)))
+              (reader-error reader "Invalid token: :" token)
               (keyword ns name)))
           (reader-error reader "Invalid token: :" token)))
       (reader-error reader "Invalid token: :"))))
