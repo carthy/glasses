@@ -726,10 +726,12 @@
                (let [r (read-char rdr)]
                  (if (= eof (str pb r))
                    s
-                   (if (= r (nth eof
-                                 (count pb)))
-                     (recur s (str pb r))
-                     (recur (str s pb r) "")))))]
+                   (if r
+                     (if (= r (nth eof
+                                   (count pb)))
+                      (recur s (str pb r))
+                      (recur (str s pb r) ""))
+                     (reader-error rdr "EOF while reading string")))))]
     text))
 
 (defn macros [ch]
