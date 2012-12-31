@@ -716,6 +716,22 @@
     (list 'clojure.core/syntax-quote
           (syntax-quote (read rdr true nil true)))))
 
+(defn read-heredoc [rdr e]
+  (let [eof (loop [s ""]
+              (let [c (read-char rdr)]
+                (if (= e c)
+                  s
+                  (recur (str s c)))))
+        text (loop [s "" pb ""]
+               (let [r (read-char rdr)]
+                 (if (= eof (str pb r))
+                   s
+                   (if (= r (nth eof
+                                 (count pb)))
+                     (recur s (str pb r))
+                     (recur (str s pb r) "")))))]
+    text))
+
 (defn macros [ch]
   (case ch
     \" read-string*
@@ -747,6 +763,7 @@
     \" read-regex
     \! read-comment
     \_ read-discard
+    \> read-heredoc
     nil))
 
 (defn read-tagged* [rdr tag f]
