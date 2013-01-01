@@ -636,26 +636,23 @@
         (set! gensym-env (assoc gensym-env sym gs))
         gs)))
 
+;; TODO: should move those two to use the runtime
 (defn- resolve-ns [sym]
   (or ((ns-aliases *ns*) sym)
       (find-ns sym)))
 
 (defn- resolve-symbol [s]
-  (if (pos? (.indexOf (name s) "."))
-    s
-    (if-let [ns-str (namespace s)]
-      (let [^Namespace ns (resolve-ns (symbol ns-str))]
-        (if (or (nil? ns)
-                (= (name (.name ns)) ns-str)) ;; not an alias
-          s
-          (symbol (name (.name ns)) (name s))))
-      (if-let [o ((ns-map *ns*) s)]
-        (if (class? o)
-          (symbol (.getName ^Class o))
-          (if (var? o)
-            (symbol (-> ^Var o .ns .name name) (-> ^Var o .sym name))))
-        (symbol (name (.name *ns*)) (name s))))))
-
+  (if-let [ns-str (namespace s)]
+    (let [^Namespace ns (resolve-ns (symbol ns-str))
+          ns-name (name (.name ns))]
+      (if (or (nil? ns)
+              (= ns-name ns-str)) ;; not an alias
+        s
+        (symbol ns-name (name s))))
+    (if-let [o ((ns-map *ns*) s)] ;; refered symbol
+      (symbol (-> ^Var o .ns .name name)
+              (-> ^Var o .sym name))
+      (symbol (name (.name *ns*)) (name s)))))
 
 (defn- add-meta [form ret]
   (if (and (instance? IObj form)
@@ -667,31 +664,23 @@
   (->>
    (cond
 
-     (.containsKey Compiler/specials form)
+     (special-symbol? form)
      form
 
      (symbol? form)
-     (if (namespace form)
-       (let [maybe-class ((ns-map *ns*)
-                          (symbol (namespace form)))]
-         (if (class? maybe-class)
-           (symbol (.getName ^Class maybe-class) (name form))
-           (resolve-symbol form)))
-       (let [sym (name form)]
-         (cond
-           (.endsWith sym "#")
-           (register-gensym form)
+     (or
+      (when-not (namespace form)
+        (let [sym (name form)]
+          (cond
+            (.endsWith sym "#")
+            (register-gensym form)
 
-           (.startsWith sym ".")
-           form
+            (.startsWith sym ".")
+            form
 
-           (.startsWith sym "$") ;; == '~
-           (symbol (subs sym 1))
-
-           (.endsWith sym ".")
-           (let [csym (symbol (subs sym 0 (dec (count sym))))]
-             (symbol (str (name (resolve-symbol csym)) ".")))
-           :else (resolve-symbol form))))
+            (.startsWith sym "$") ;; == '~
+            (symbol (subs sym 1)))))
+      (resolve-symbol form))
 
      (or (keyword? form)
          (number? form)
