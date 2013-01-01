@@ -462,7 +462,9 @@
       ("Infinity" "+Infinity") Double/POSITIVE_INFINITY
 
       (or (when-let [p (parse-symbol token)]
-            (symbol (p 0) (p 1)))
+            (when-not (and (p 0)
+                           (.startsWith ^String (p 1) "."))
+              (symbol (p 0) (p 1))))
           (reader-error rdr "Invalid token: " token)))))
 
 (defn read-keyword
