@@ -465,12 +465,6 @@
             (symbol (p 0) (p 1)))
           (reader-error rdr "Invalid token: " token)))))
 
-(def ^:dynamic *alias-map* nil)
-(defn- resolve-ns [sym]
-  (or ((or *alias-map*
-           (ns-aliases *ns*)) sym)
-      (find-ns sym)))
-
 (defn read-keyword
   [reader initch]
   (let [ch (read-char reader)]
@@ -641,6 +635,10 @@
                             "__" (RT/nextID) "__auto__"))]
         (set! gensym-env (assoc gensym-env sym gs))
         gs)))
+
+(defn- resolve-ns [sym]
+  (or ((ns-aliases *ns*) sym)
+      (find-ns sym)))
 
 (defn- resolve-symbol [s]
   (if (pos? (.indexOf (name s) "."))
