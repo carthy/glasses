@@ -238,16 +238,18 @@
 
 (defn match-number [^String s]
   (let [s (s/replace s "_" "")]
-    (cond
-      (.contains s "/") (match-ratio s (doto (.matcher ratio-pattern s) .matches))
+    (try
+      (cond
+        (.contains s "/") (match-ratio s (doto (.matcher ratio-pattern s) .matches))
 
-      (or (.contains s ".")
-          (.contains s "p")
-          (.contains s "E")
-          (.contains s "e"))
-      (match-float s (doto (.matcher float-pattern s) .matches))
+        (or (.contains s ".")
+            (.contains s "p")
+            (.contains s "E")
+            (.contains s "e"))
+        (match-float s (doto (.matcher float-pattern s) .matches))
 
-      :else (match-int s (doto (.matcher int-pattern s) .matches)))))
+        :else (match-int s (doto (.matcher int-pattern s) .matches)))
+      (catch IllegalStateException e))))
 
 (defn- parse-symbol [^String token]
   (when-not (= "" token)
