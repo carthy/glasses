@@ -614,17 +614,17 @@
   [rdr comma]
   (if-let [ch (peek-char rdr)]
     (if (identical? \@ ch)
-      ((wrapping-reader 'clojure.core/unquote-splicing) (doto rdr read-char) \@)
-      ((wrapping-reader 'clojure.core/unquote) rdr \~))))
+      ((wrapping-reader 'carthy.core/unquote-splicing) (doto rdr read-char) \@)
+      ((wrapping-reader 'carthy.core/unquote) rdr \~))))
 
 (declare syntax-quote)
 (defn unquote-splicing? [form]
   (and (seq? form)
-       (= (first form) 'clojure.core/unquote-splicing)))
+       (= (first form) 'carthy.core/unquote-splicing)))
 
 (defn unquote? [form]
   (and (seq? form)
-       (= (first form) 'clojure.core/unquote)))
+       (= (first form) 'carthy.core/unquote)))
 
 (defn- register-gensym [sym]
   (if-not gensym-env
@@ -657,7 +657,7 @@
 (defn- add-meta [form ret]
   (if (and (instance? IObj form)
            (dissoc (meta form) :line :column))
-    (list 'clojure.core/with-meta ret (syntax-quote (meta form)))
+    (list 'carthy.core/with-meta ret (syntax-quote (meta form)))
     ret))
 
 (defn syntax-quote [form]
@@ -704,7 +704,7 @@
 (defn read-syntax-quote
   [rdr backquote]
   (with-bindings {#'gensym-env {}}
-    (list 'clojure.core/syntax-quote
+    (list 'carthy.core/syntax-quote
           (syntax-quote (read rdr true nil true)))))
 
 (defn read-heredoc [rdr e]
@@ -731,7 +731,7 @@
     \: read-keyword
     \; read-comment
     \' (wrapping-reader 'quote)
-    \@ (wrapping-reader 'clojure.core/deref)
+    \@ (wrapping-reader 'carthy.core/deref)
     \^ read-meta
     \` read-syntax-quote ;;(wrapping-reader 'syntax-quote)
     \~ read-unquote
