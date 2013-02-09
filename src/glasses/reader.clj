@@ -528,15 +528,15 @@
 (defn- resolve-symbol [s]
   (if-let [ns-str (namespace s)]
     (let [^Namespace ns (resolve-ns (symbol ns-str))
-          ns-name (name (.name ns))]
+          ns-name (name (ns-name ns))]
       (if (or (nil? ns)
               (= ns-name ns-str)) ;; not an alias
         s
         (symbol ns-name (name s))))
     (if-let [o ((ns-map *ns*) s)] ;; refered symbol
-      (symbol (-> ^Var o .ns .name name)
+      (symbol (-> ^Var o .ns ns-name name)
               (-> ^Var o .sym name))
-      (symbol (name (.name *ns*)) (name s)))))
+      (symbol (name (ns-name *ns*)) (name s)))))
 
 (defn- add-meta [form ret]
   (if (and (instance? IObj form)
