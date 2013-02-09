@@ -3,164 +3,30 @@
 (ns glasses.reader
   (:refer-clojure :exclude [read read-line read-string char default-data-readers])
   (:require [clojure.core :as c.c]
-            [clojure.string :as s])
-  (:import (clojure.lang BigInt Numbers PersistentHashMap PersistentHashSet
-                         IMeta  RT Symbol Reflector Var Symbol IObj PersistentQueue
-                         PersistentVector IRecord Namespace)
-           (java.util ArrayList regex.Pattern regex.Matcher)
+            [clojure.string :as s]
+            [glasses.reader-types :refer :all]
+            [glasses.utils :refer :all])
+  (:import (clojure.lang PersistentHashSet IMeta
+                         RT Symbol Reflector Var IObj
+                         PersistentVector IRecord Namespace
+                         PersistentQueue)
+           (clojure.lang BigInt Numbers)
+           (java.util regex.Pattern regex.Matcher)
            java.lang.reflect.Constructor))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; utils
+;; read helpers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defmacro ^:private update! [what f]
-  (list 'set! what (list f what)))
-
-(defn- char [x]
-  (try (clojure.core/char x)
-       (catch NullPointerException e)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; reader protocols
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defprotocol Reader
-  (read-char [reader] "Returns the next char from the Reader, nil if the end of stream has been reached")
-  (peek-char [reader] "Returns the next char from the Reader without removing it from the reader stream"))
-
-(defprotocol IPushbackReader
-  (unread [reader ch] "Push back a single character on to the stream"))
-
-(defprotocol IndexingReader
-  (get-line-number [reader])
-  (get-column-number [reader]))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; reader deftypes
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(deftype StringReader
-    [^String s s-len ^:unsynchronized-mutable s-pos]
-  Reader
-  (read-char [reader]
-    (when (> s-len s-pos)
-      (let [r (nth s s-pos)]
-        (update! s-pos inc)
-        r)))
-  (peek-char [reader]
-    (when (> s-len s-pos)
-      (nth s s-pos))))
-
-(deftype PushbackReader
-    [rdr ^objects buf buf-len ^:unsynchronized-mutable buf-pos]
-  Reader
-  (read-char [reader]
-    (char
-     (if (< buf-pos buf-len)
-       (let [r (aget buf buf-pos)]
-         (update! buf-pos inc)
-         r)
-       (read-char rdr))))
-  (peek-char [reader]
-    (char
-     (if (< buf-pos buf-len)
-       (aget buf buf-pos)
-       (peek-char rdr))))
-  IPushbackReader
-  (unread [reader ch]
-    (when ch
-      (if (zero? buf-pos) (throw (RuntimeException. "Pushback buffer is full")))
-      (update! buf-pos dec)
-      (aset buf buf-pos ch))))
-
-(declare newline?)
-
-(defn- normalize-newline [rdr ch]
-  (if (identical? \return ch)
-    (let [c (peek-char rdr)]
-      (when (identical? \formfeed c)
-        (read-char rdr))
-      \newline)
-    ch))
-
-(deftype IndexingPushbackReader
-    [rdr ^:unsynchronized-mutable line ^:unsynchronized-mutable column
-     ^:unsynchronized-mutable line-start? ^:unsynchronized-mutable prev]
-  Reader
-  (read-char [reader]
-    (when-let [ch (read-char rdr)]
-      (let [ch (normalize-newline rdr ch)]
-        (set! prev line-start?)
-        (set! line-start? (newline? ch))
-        (when line-start?
-          (set! column 0)
-          (update! line inc))
-        (update! column inc)
-        ch)))
-
-  (peek-char [reader]
-    (peek-char rdr))
-
-  IPushbackReader
-  (unread [reader ch]
-    (when line-start? (update! line dec))
-    (set! line-start? prev)
-    (update! column dec)
-    (unread rdr ch))
-
-  IndexingReader
-  (get-line-number [reader] (inc line))
-  (get-column-number [reader]  column))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; predicates
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn- whitespace?
-  "Checks whether a given character is whitespace"
-  [ch]
-  (when ch
-    (or (Character/isWhitespace ^Character ch)
-        (identical? \, ch))))
-
-(defn- numeric?
-  "Checks whether a given character is numeric"
-  [^Character ch]
-  (when ch
-    (Character/isDigit ch)))
-
-(defn- comment-prefix?
-  "Checks whether the character begins a comment."
-  [ch]
-  (identical? \; ch))
-
-(defn- number-literal?
+(defn number-literal?
   "Checks whether the reader is at the start of a number literal"
   [reader initch]
   (or (numeric? initch)
       (and (or (identical? \+ initch) (identical?  \- initch))
            (numeric? (peek-char reader)))))
 
-(defn newline? [c]
-  "Checks whether the character is a newline"
-  (or (identical? \newline c)
-      (nil? c)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; read helpers
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (declare read macros dispatch-macros)
 
-(defn reader-error
-  "Throws an Exception info, if rdr is an IndexingReader, additional information about column and line number is provided"
-  [rdr & msg]
-  (throw (ex-info (apply str msg)
-                  (merge {:type :reader-exception}
-                         (if (instance? glasses.reader.IndexingReader rdr)
-                           {:line (get-line-number rdr)
-                            :column (get-column-number rdr)})))))
 
 (defn macro-terminating? [ch]
   (and (not (identical? \# ch))
@@ -383,7 +249,7 @@
 
 (defn read-list
   [rdr _]
-  (let [[line column] (when (instance? glasses.reader.IndexingReader rdr)
+  (let [[line column] (when (indexing-reader? rdr)
                         [(get-line-number rdr) (dec (get-column-number rdr))])
         the-list (read-delimited-list \) rdr true)]
     (if (empty? the-list)
@@ -502,7 +368,7 @@
 
 (defn read-meta
   [rdr _]
-  (let [[line column] (when (instance? glasses.reader.IndexingReader rdr)
+  (let [[line column] (when (indexing-reader? rdr)
                         [(get-line-number rdr) (dec (get-column-number rdr))])
         m (desugar-meta (read rdr true nil true))]
     (when-not (map? m)
@@ -849,34 +715,13 @@
 ;; Public API
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn string-reader
-  "Creates a StringReader from a given string"
-  ([^String s]
-     (StringReader. s (count s) 0)))
-
-(defn string-push-back-reader
-  "Creates a PushbackReader from a given string"
-  ([s]
-     (string-push-back-reader s 1))
-  ([^String s buf-len]
-     (PushbackReader. (string-reader s) (object-array buf-len) buf-len buf-len)))
-
-(defn indexing-push-back-reader
-  "Creates an IndexingPushbackReader from a given string or Reader"
-  ([s-or-rdr]
-     (IndexingPushbackReader.
-      (string-push-back-reader s-or-rdr) 0 1 true nil))
-  ([s-or-rdr buf-len]
-     (IndexingPushbackReader.
-      (string-push-back-reader s-or-rdr buf-len) 0 1 true nil)))
-
 (defn read
   "Reads the first object from an IPushbackReader or a java.io.PushbackReader.
 Returns the object read. If EOF, throws if eof-error? is true. Otherwise returns sentinel."
   ([] (read *in*))
   ([reader] (read reader true nil))
   ([reader eof-error? sentinel] (read reader eof-error? sentinel false))
-  ([^glasses.reader.IPushbackReader reader eof-error? sentinel recursive?]
+  ([reader eof-error? sentinel recursive?]
      (try
        (let [ch (read-char reader)]
          (cond
@@ -896,7 +741,7 @@ Returns the object read. If EOF, throws if eof-error? is true. Otherwise returns
             (throw e)
             (throw (ex-info (.getMessage e)
                             (merge {:type :reader-exception}
-                                   (if (instance? glasses.reader.IndexingReader reader)
+                                   (when (indexing-reader? reader)
                                      {:line (get-line-number reader)
                                       :column (get-column-number reader)}))
                             e)))))))
@@ -905,12 +750,3 @@ Returns the object read. If EOF, throws if eof-error? is true. Otherwise returns
   "Reads one object from the string s"
   [s]
   (read (string-push-back-reader s) true nil false))
-
-(defn read-line
-  "Reads a line from the reader or from *in* if no reader is specified"
-  ([] (read-line *in*))
-  ([rdr]
-     (loop [c (read-char rdr) s ""]
-       (if (newline? c)
-         s
-         (recur (read-char rdr) (str s c))))))
