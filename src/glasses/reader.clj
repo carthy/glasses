@@ -27,11 +27,11 @@
 
 (declare read macros dispatch-macros)
 
-
 (defn macro-terminating? [ch]
   (and (not (identical? \# ch))
        (not (identical? \' ch))
        (not (identical? \: ch))
+       (not (identical? \% ch))
        (macros ch)))
 
 (defn ^String read-token
