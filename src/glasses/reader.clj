@@ -252,23 +252,32 @@
   [rdr _]
   (let [[line column] (when (indexing-reader? rdr)
                         [(get-line-number rdr) (dec (get-column-number rdr))])
-        the-list (read-delimited-list \) rdr true)]
+        the-list (read-delimited \) rdr true)]
     (if (empty? the-list)
       '()
-      (if-not line
-        (clojure.lang.PersistentList/create the-list)
-        (with-meta (clojure.lang.PersistentList/create the-list) {:line line :column column})))))
+      (with-meta (clojure.lang.PersistentList/create the-list)
+        (when line
+          {:line line :column column})))))
 
 (defn read-vector
   [rdr _]
-  (read-delimited-list \] rdr true))
+  (let [[line column] (when (indexing-reader? rdr)
+                        [(get-line-number rdr) (dec (get-column-number rdr))])
+        the-vector (read-delimited \] rdr true)]
+    (with-meta the-vector
+      (when line
+        {:line line :column column}))))
 
 (defn read-map
   [rdr _]
-  (let [l (to-array (read-delimited-list \} rdr true))]
+  (let [[line column] (when (indexing-reader? rdr)
+                        [(get-line-number rdr) (dec (get-column-number rdr))])
+        l (to-array (read-delimited \} rdr true))]
     (when (== 1 (bit-and (alength l) 1))
       (reader-error rdr "Map literal must contain an even number of forms"))
-    (RT/map l)))
+    (with-meta (RT/map l)
+      (when line
+        {:line line :column column}))))
 
 (defn read-number
   [reader initch]
@@ -317,22 +326,26 @@
 (defn read-symbol
   [rdr initch]
   (when-let [token (read-token rdr initch)]
-    (case token
+    (let [[line column] (when (indexing-reader? rdr)
+                          [(get-line-number rdr) (dec (get-column-number rdr))])]
+      (case token
 
-      ;; special symbols
-      "nil" nil
-      "true" true
-      "false" false
-      "/" '/
-      "NaN" Double/NaN
-      "-Infinity" Double/NEGATIVE_INFINITY
-      ("Infinity" "+Infinity") Double/POSITIVE_INFINITY
+        ;; special symbols
+        "nil" nil
+        "true" true
+        "false" false
+        "/" '/
+        "NaN" Double/NaN
+        "-Infinity" Double/NEGATIVE_INFINITY
+        ("Infinity" "+Infinity") Double/POSITIVE_INFINITY
 
-      (or (when-let [p (parse-symbol token)]
-            (when-not (and (p 0)
-                           (.startsWith ^String (p 1) "."))
-              (symbol (p 0) (p 1))))
-          (reader-error rdr "Invalid token: " token)))))
+        (or (when-let [p (parse-symbol token)]
+              (when-not (and (p 0)
+                             (.startsWith ^String (p 1) "."))
+                (with-meta (symbol (p 0) (p 1))
+                  (when line
+                    {:line line :column column}))))
+            (reader-error rdr "Invalid token: " token))))))
 
 (defn read-keyword
   [reader initch]
@@ -391,31 +404,33 @@
 
 (defn read-set
   [rdr _]
-  (PersistentHashSet/createWithCheck (read-delimited-list \} rdr true)))
+  (PersistentHashSet/createWithCheck (read-delimited \} rdr true)))
 
 ;; Marker type
 (deftype Tuple [coll])
 
 (defn read-tuple
   [rdr _]
-  (Tuple. (read-delimited-list \] rdr true)))
+  (Tuple. (read-delimited \] rdr true)))
 
 (defmethod print-method Tuple [^Tuple t ^java.io.Writer w]
   (.write w (str "#" (.coll t))))
-
 (defn read-regex
   [rdr ch]
-  (loop [ch (read-char rdr) sb ""]
-    (if (identical? \" ch)
-      (Pattern/compile sb)
-      (if (nil? ch)
-        (reader-error rdr "EOF while reading regex")
-        (let [ch? (when (identical? \\ ch)
-                    (let [ch (read-char rdr)]
-                      (when (nil? ch)
-                        (reader-error rdr "EOF while reading regex"))
-                      ch))]
-          (recur (read-char rdr) (str sb (str ch ch?))))))))
+  (let [sb (StringBuilder.)]
+    (loop [ch (read-char rdr)]
+      (if (identical? \" ch)
+        (Pattern/compile (str sb))
+        (if (nil? ch)
+          (reader-error rdr "EOF while reading regex")
+          (do
+            (.append sb ch )
+            (when (identical? \\ ch)
+              (let [ch (read-char rdr)]
+                (if (nil? ch)
+                  (reader-error rdr "EOF while reading regex"))
+                (.append sb ch)))
+            (recur (read-char rdr))))))))
 
 (defn read-discard
   [rdr _]
@@ -639,7 +654,7 @@
                              \[ [\] :short]
                              \{ [\} :extended]
                              nil)]
-      (let [entries (to-array (read-delimited-list end-ch rdr true))
+      (let [entries (to-array (read-delimited end-ch rdr true))
             all-ctors (.getConstructors class)
             ctors-num (count all-ctors)]
         (case form
