@@ -157,24 +157,23 @@
      (let [l (+ offset length)]
        (when-not (== (count token) l)
          (throw (IllegalArgumentException. (str "Invalid unicode character: \\" token))))
-       (loop [uc 0 i offset]
+       (loop [i offset uc 0]
          (if (== i l)
            (char uc)
            (let [d (Character/digit ^char (nth token i) ^int base)]
              (if (== d -1)
                (throw (IllegalArgumentException. (str "Invalid digit: " (nth token i))))
-               (recur (long (* uc (+ base d))) (inc i))))))))
+               (recur (inc i) (long (+ d (* uc base))))))))))
 
   ([rdr initch base length exact?]
-     (let [uc (Character/digit ^char initch ^int base)]
+     (loop [i 1 uc (Character/digit ^char initch ^int base)]
        (if (== uc -1)
-         (throw (IllegalArgumentException. (str "Invalid digit: " initch))))
-       (loop [i 1 uc uc]
+         (throw (IllegalArgumentException. (str "Invalid digit: " initch)))
          (if-not (== i length)
            (let [ch (peek-char rdr)]
-             (if (or (nil? ch)
-                     (whitespace? ch)
-                     (macros ch))
+             (if (or (whitespace? ch)
+                     (macros ch)
+                     (nil? ch))
                (if exact?
                  (throw (IllegalArgumentException.
                          (str "Invalid character length: " i ", should be: " length)))
@@ -182,52 +181,55 @@
                (let [d (Character/digit ^char ch ^int base)]
                  (read-char rdr)
                  (if (== d -1)
-                   (throw (IllegalArgumentException. (str "Invalid digit: " (char ch))))
-                   (recur (inc i) (long (* uc (+ base d))))))))
+                   (throw (IllegalArgumentException. (str "Invalid digit: " ch)))
+                   (recur (inc i) (long (+ d (* uc base))))))))
            (char uc))))))
 
-(defn read-char*
-  [rdr backslash]
-  (let [ch (read-char rdr)]
-    (if-not (nil? ch)
-      (let [token (read-token rdr ch)]
-        (cond
+(let [upper-limit (int \uD7ff)
+      lower-limit (int \uE000)]
+  (defn read-char*
+    [rdr backslash]
+    (let [ch (read-char rdr)]
+      (if-not (nil? ch)
+        (let [token (read-token rdr ch)
+              token-len (count token)]
+          (cond
 
-          (== 1 (count token))  (Character/valueOf (nth token 0))
+           (== 1 token-len)  (Character/valueOf (nth token 0))
 
-          (= token "newline") \newline
-          (= token "space") \space
-          (= token "tab") \tab
-          (= token "backspace") \backspace
-          (= token "formfeed") \formfeed
-          (= token "return") \return
+           (= token "newline") \newline
+           (= token "space") \space
+           (= token "tab") \tab
+           (= token "backspace") \backspace
+           (= token "formfeed") \formfeed
+           (= token "return") \return
 
-          (.startsWith token "u")
-          (let [c (read-unicode-char token 1 4 16)
-                ic (int c)]
-            (if (and (> ic (int \uD799))
-                     (< ic (int \uE000)))
-              (reader-error rdr "Invalid character constant: \\u" (Integer/toString ic 16))
-              c))
+           (.startsWith token "u")
+           (let [c (read-unicode-char token 1 4 16)
+                 ic (int c)]
+             (if (and (> ic upper-limit)
+                      (< ic lower-limit))
+               (reader-error rdr "Invalid character constant: \\u" (Integer/toString ic 16))
+               c))
 
-          (.startsWith token "x")
-          (read-unicode-char token 1 2 16)
+           (.startsWith token "x")
+           (read-unicode-char token 1 2 16)
 
-          (.startsWith token "o")
-          (let [len (dec (count token))]
-            (if (> len 3)
-              (reader-error rdr "Invalid octal escape sequence length: " len)
-              (let [uc (read-unicode-char token 1 len 8)]
-                (if (> (int uc) 0377)
-                  (reader-error rdr "Octal escape sequence must be in range [0, 377]")
-                  uc))))
+           (.startsWith token "o")
+           (let [len (dec token-len)]
+             (if (> len 3)
+               (reader-error rdr "Invalid octal escape sequence length: " len)
+               (let [uc (read-unicode-char token 1 len 8)]
+                 (if (> (int uc) 0377)
+                   (reader-error rdr "Octal escape sequence must be in range [0, 377]")
+                   uc))))
 
-          :else (reader-error rdr "Unsupported character: \\" token)))
-      (reader-error rdr "EOF while reading character"))))
+           :else (reader-error rdr "Unsupported character: \\" token)))
+        (reader-error rdr "EOF while reading character")))))
 
-(defn ^PersistentVector read-delimited-list
+(defn ^PersistentVector read-delimited
   [delim rdr recursive?]
-  (let [first-line  (when (instance? glasses.reader.IndexingReader rdr)
+  (let [first-line  (when (indexing-reader? rdr)
                       (get-line-number rdr))
         delim ^char delim]
     (loop [a (transient [])]
