@@ -361,7 +361,7 @@
               (reader-error reader "Invalid token: :" token)
               (keyword ns name)))
           (reader-error reader "Invalid token: :" token)))
-      (reader-error reader "Invalid token: :"))))
+      (symbol initch))))
 
 (defn desugar-meta
   [f]
