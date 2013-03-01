@@ -647,36 +647,6 @@
   (let [o (read rdr true nil true)]
     (f o)))
 
-(defn read-ctor [rdr class-name]
-  (let [class (RT/classForName (name class-name))
-        ch (read-past whitespace? rdr)] ;; differs from clojure
-    (if-let [[end-ch form] (case ch
-                             \[ [\] :short]
-                             \{ [\} :extended]
-                             nil)]
-      (let [entries (to-array (read-delimited end-ch rdr true))
-            all-ctors (.getConstructors class)
-            ctors-num (count all-ctors)]
-        (case form
-          :short
-          (loop [i 0]
-            (if (> i ctors-num)
-              (reader-error rdr "Unexpected number of constructor arguments to " (str class)
-                            ": got" (count entries))
-              (if (== (count (.getParameterTypes ^Constructor (aget all-ctors i)))
-                      ctors-num)
-                (Reflector/invokeConstructor class entries)
-                (recur (inc i)))))
-          :extended
-          (let [vals (RT/map entries)]
-            (loop [s (keys vals)]
-              (if s
-                (if-not (keyword? (first s))
-                  (reader-error rdr "Unreadable ctor form: key must be of type clojure.lang.Keyword")
-                  (recur (next s)))))
-            (Reflector/invokeStaticMethod class "create" (object-array [vals])))))
-      (reader-error rdr "Invalid reader constructor form"))))
-
 (declare default-data-readers)
 
 (defn read-tagged [rdr initch]
@@ -686,9 +656,7 @@
     (if-let [f (or (*data-readers* tag)
                    (default-data-readers tag))]
       (read-tagged* rdr tag f)
-      (if (.contains (name tag) ".")
-        (read-ctor rdr tag)
-        (reader-error rdr "No reader function for tag " (name tag))))))
+      (reader-error rdr "No reader function for tag " (name tag)))))
 
 ;; marker type
 (deftype complex [real imaginary])
