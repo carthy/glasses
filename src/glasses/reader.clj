@@ -31,7 +31,7 @@
   (and (not (identical? \# ch))
        (not (identical? \' ch))
        (not (identical? \: ch))
-       (not (identical? \% ch))
+       (not (identical? \_ ch))
        (macros ch)))
 
 (defn ^String read-token
@@ -489,7 +489,7 @@
           (if (= n '&)
             (register-arg -1)
             (if-not (number? n)
-              (throw (IllegalStateException. "Arg literal must be %, %& or %integer"))
+              (throw (IllegalStateException. "Arg literal must be _, _& or _integer"))
               (register-arg n))))))))
 
 (def ^:private ^:dynamic gensym-env nil)
@@ -626,7 +626,7 @@
     \{ read-map
     \} read-unmatched-delimiter
     \\ read-char*
-    \% read-arg
+    \_ read-arg
     \# read-dispatch
     nil))
 
